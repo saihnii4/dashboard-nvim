@@ -27,10 +27,6 @@ local function cache_path()
   return utils.path_join(dir, 'cache')
 end
 
-local function conf_cache_path()
-  return utils.path_join(cache_dir(), 'conf')
-end
-
 local function default_options()
   return {
     theme = 'hyper',
@@ -129,68 +125,16 @@ function db:restore_user_options(opts)
   end
 end
 
-function db:cache_opts()
-  if not self.opts then
-    return
-  end
-  local uv = vim.loop
-  local path = conf_cache_path()
-  if self.opts.config.shortcut then
-    for _, item in pairs(self.opts.config.shortcut) do
-      if type(item.action) == 'function' then
-        ---@diagnostic disable-next-line: param-type-mismatch
-        local dump = assert(string.dump(item.action))
-        item.action = dump
-      end
-    end
-  end
-
-  if self.opts.config.project and type(self.opts.config.project.action) == 'function' then
-    ---@diagnostic disable-next-line: param-type-mismatch
-    local dump = assert(string.dump(self.opts.config.project.action))
-    self.opts.config.project.action = dump
-  end
-
-  if self.opts.config.center then
-    for _, item in pairs(self.opts.config.center) do
-      if type(item.action) == 'function' then
-        ---@diagnostic disable-next-line: param-type-mismatch
-        local dump = assert(string.dump(item.action))
-        item.action = dump
-      end
-    end
-  end
-
-  if self.opts.config.footer and type(self.opts.config.footer) == 'function' then
-    ---@diagnostic disable-next-line: param-type-mismatch
-    local dump = assert(string.dump(self.opts.config.footer))
-    self.opts.config.footer = dump
-  end
-
-  local dump = vim.json.encode(self.opts)
-  uv.fs_open(path, 'w+', tonumber('664', 8), function(err, fd)
-    assert(not err, err)
-    ---@diagnostic disable-next-line: redefined-local
-    uv.fs_write(fd, dump, 0, function(err, _)
-      assert(not err, err)
-      uv.fs_close(fd)
-    end)
-  end)
-end
-
 function db:get_opts(callback)
-  utils.async_read(
-    conf_cache_path(),
-    vim.schedule_wrap(function(data)
-      if not data or #data == 0 then
-        return
-      end
-      local obj = vim.json.decode(data)
-      if obj then
-        callback(obj)
-      end
-    end)
-  )
+  vim.schedule_wrap(function(data)
+    if not data or #data == 0 then
+      return
+    end
+    local obj = vim.json.decode(data)
+    if obj then
+      callback(obj)
+    end
+  end)
 end
 
 function db:load_theme(opts)
@@ -247,7 +191,6 @@ function db:load_theme(opts)
 
       -- clean up if there are no dashboard buffers at all
       if #bufs == 0 then
-        self:cache_opts()
         clean_ctx()
         pcall(api.nvim_del_autocmd, opt.id)
       end

@@ -373,12 +373,33 @@ local function gen_center(plist, config)
   for i, component in ipairs(config.extra_components) do
     if component.async and _queue[i] == nil then
       _queue[i] = { false, { 'Loading' }, component.render }
-      local work = vim.uv.new_work(component.render, function(result)
-        _queue[i] = { true, result }
-        -- refresh
+      local _render = function()
+        string.dump(component.render)
+      end
+      local work = vim.uv.new_work(component.render, function(packed_result)
+        local result = vim.mpack.decode(packed_result)
+        _queue[i] = { true, result, nil }
         theme_instance(config)
       end)
-      work:queue()
+      -- local work = vim.uv.new_work(
+      --   (function(cb)
+      --     return function(packed_config)
+      --       local unpacked_config = vim.mpack.decode(packed_config)
+      --       print(vim.inspect(unpacked_config))
+      --       vim.uv.sleep(2000)
+      --       -- return vim.mpack.encode({ 'testing', 'testing', 'teijwd' })
+      --       local result = cb(unpacked_config)
+      --       print(vim.inspect(result))
+      --       return vim.mpack.encode(result)
+      --     end
+      --   end)(component.render),
+      --   function(packed_result)
+      --     local result = vim.mpack.decode(packed_result)
+      --     _queue[i] = { true, result, nil }
+      --     theme_instance(config)
+      --   end
+      -- )
+      work:queue(vim.mpack.encode({}))
     end
 
     local lines = _queue[i] ~= nil and _queue[i][2] or component.render(config)
@@ -456,35 +477,40 @@ local function gen_center(plist, config)
   -- initialize the cursor pos
   api.nvim_win_set_cursor(config.winid, { first_line + 3, start_col + 4 })
 
-  api.nvim_buf_add_highlight(config.bufnr, 0, 'DashboardMruTitle', first_line + plist_len, 0, -1)
-  api.nvim_buf_add_highlight(
+  local dashboard_test = api.nvim_create_namespace('dashboard.nvim')
+
+  vim.hl.range(
     config.bufnr,
-    0,
+    dashboard_test,
+    'DashboardMruTitle',
+    { first_line + plist_len, 0 },
+    { first_line + plist_len, -1 }
+  )
+  vim.hl.range(
+    config.bufnr,
+    dashboard_test,
     'DashboardMruIcon',
-    first_line + plist_len,
-    0,
-    start_col + #config.mru.icon
+    { first_line + plist_len, 0 },
+    { first_line + plist_len, start_col + #config.mru.icon }
   )
 
   for i, data in pairs(mgroups) do
     local len, group = unpack(data)
     if group then
-      api.nvim_buf_add_highlight(
+      vim.hl.range(
         config.bufnr,
-        0,
+        dashboard_test,
         group,
-        first_line + i + plist_len,
-        start_col,
-        start_col + len
+        { first_line + i + plist_len, start_col },
+        { first_line + i + plist_len, start_col + len }
       )
     end
-    api.nvim_buf_add_highlight(
+    vim.hl.range(
       config.bufnr,
-      0,
+      dashboard_test,
       'DashboardFiles',
-      first_line + i + plist_len,
-      start_col + len,
-      -1
+      { first_line + i + plist_len, start_col + len },
+      { first_line + i + plist_len, -1 }
     )
 
     local text = api.nvim_buf_get_lines(
