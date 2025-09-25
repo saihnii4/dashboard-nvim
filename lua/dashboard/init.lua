@@ -41,6 +41,7 @@ local function default_options()
     buffer_name = 'Dashboard',
     change_to_vcs_root = false,
     config = {
+      extra_components = {},
       week_header = {
         enable = false,
         concat = nil,

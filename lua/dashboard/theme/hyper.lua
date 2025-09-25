@@ -1,6 +1,7 @@
 local api, keymap, uv = vim.api, vim.keymap, vim.loop
 local utils = require('dashboard.utils')
 local ns = api.nvim_create_namespace('dashboard')
+local _queue = {}
 
 local function gen_shortcut(config)
   local shortcut = config.shortcut
@@ -355,6 +356,7 @@ local function gen_center(plist, config)
     plist[#plist + 1] = ''
     plist_len = 1
   end
+
   ---@diagnostic disable-next-line: param-type-mismatch
   vim.list_extend(plist, mlist)
   local max_len = utils.get_max_len(plist)
@@ -367,6 +369,27 @@ local function gen_center(plist, config)
 
   plist = utils.element_align(plist)
   plist = utils.center_align(plist)
+
+  for i, component in ipairs(config.extra_components) do
+    if component.async and _queue[i] == nil then
+      _queue[i] = { false, { 'Loading' }, component.render }
+      local work = vim.uv.new_work(component.render, function(result)
+        _queue[i] = { true, result }
+        -- refresh
+        theme_instance(config)
+      end)
+      work:queue()
+    end
+
+    local lines = _queue[i] ~= nil and _queue[i][2] or component.render(config)
+
+    table.insert(lines, 1, '')
+    if component.center_align == nil or component.center_align then
+      lines = utils.center_align(lines)
+    end
+    vim.list_extend(plist, lines)
+  end
+
   local first_line = api.nvim_buf_line_count(config.bufnr)
   api.nvim_buf_set_lines(config.bufnr, first_line, -1, false, plist)
 
@@ -374,12 +397,11 @@ local function gen_center(plist, config)
     return
   end
 
-  local _, scol = plist[2]:find('%S')
-  if scol == nil then
-    scol = 0
+  local _, start_col = plist[2]:find('%S')
+  if start_col == nil then
+    start_col = 0
   end
 
-  local start_col = scol
   if config.mru.enable then
     start_col = plist[plist_len + 2]:find('[^%s]') - 1
   end
@@ -393,7 +415,7 @@ local function gen_center(plist, config)
     'DashboardProjectTitleIcon',
     first_line + 1,
     0,
-    scol + #config.project.icon
+    start_col + #config.project.icon
   )
 
   for i = 3, plist_len do
@@ -441,7 +463,7 @@ local function gen_center(plist, config)
     'DashboardMruIcon',
     first_line + plist_len,
     0,
-    scol + #config.mru.icon
+    start_col + #config.mru.icon
   )
 
   for i, data in pairs(mgroups) do
@@ -544,7 +566,7 @@ local function project_delete()
   })
 end
 
-local function theme_instance(config)
+function theme_instance(config)
   project_list(config, function(plist)
     if not api.nvim_buf_is_valid(config.bufnr) then
       return
